@@ -25,6 +25,8 @@ import {
 
 const board = document.querySelector('#board');
 const dragLayer = document.querySelector('#drag-layer');
+const fireworksCanvas = document.querySelector('#fireworks');
+const fireworksCtx = fireworksCanvas?.getContext('2d');
 const statusEl = document.querySelector('#status');
 const timerEl = document.querySelector('#timer');
 const movesEl = document.querySelector('#moves');
@@ -37,6 +39,7 @@ const drawThreeBtn = document.querySelector('#draw-three');
 const autoBtn = document.querySelector('#auto-complete');
 const MIN_DROP_SLOP = 32;
 const MAX_DROP_SLOP = 72;
+const FIREWORK_COLORS = ['#ffdf7a', '#ff6f91', '#67e8f9', '#a7f3d0', '#f9a8d4', '#ffffff'];
 
 let state = loadState(localStorage) || createNewGame({ drawMode: loadDrawModePreference(localStorage) });
 let selection = null;
@@ -45,6 +48,8 @@ let drag = null;
 let lastTap = { key: '', at: 0 };
 let statusTone = '';
 let hintTarget = null;
+let lastKnownWon = Boolean(state.won);
+let fireworks = createFireworksState();
 
 saveState(localStorage, state);
 render();
@@ -382,6 +387,7 @@ function saveAndRender(message, tone = '') {
       ? 'Auto-complete is available.'
       : 'Ready.';
   setStatus(text, tone || (autoReady ? 'win' : ''));
+  syncWinCelebration();
 }
 
 function render() {
@@ -661,6 +667,211 @@ function setStatus(message, tone = '') {
   statusEl.className = `status${statusTone ? ` is-${statusTone}` : ''}`;
 }
 
+function syncWinCelebration() {
+  if (state.won && !lastKnownWon) {
+    startFireworks();
+  } else if (!state.won) {
+    stopFireworks();
+  }
+  lastKnownWon = Boolean(state.won);
+}
+
+function createFireworksState() {
+  return {
+    active: false,
+    launching: false,
+    rockets: [],
+    particles: [],
+    rafId: 0,
+    timers: [],
+    lastFrame: 0
+  };
+}
+
+function startFireworks() {
+  if (!fireworksCanvas || !fireworksCtx || prefersReducedMotion()) return;
+  stopFireworks();
+
+  fireworks = createFireworksState();
+  fireworks.active = true;
+  fireworks.launching = true;
+  fireworks.lastFrame = performance.now();
+  fireworksCanvas.hidden = false;
+  document.body.classList.add('is-celebrating');
+  resizeFireworksCanvas();
+
+  const launchTimes = [0, 260, 520, 820, 1160, 1500, 1900, 2350, 2850];
+  fireworks.timers = launchTimes.map((delay) => window.setTimeout(launchFirework, delay));
+  fireworks.timers.push(window.setTimeout(() => {
+    fireworks.launching = false;
+  }, launchTimes[launchTimes.length - 1] + 120));
+
+  fireworks.rafId = requestAnimationFrame(updateFireworks);
+}
+
+function stopFireworks() {
+  if (!fireworks.active && !fireworks.launching) return;
+  fireworks.timers.forEach((timerId) => clearTimeout(timerId));
+  if (fireworks.rafId) cancelAnimationFrame(fireworks.rafId);
+  fireworks = createFireworksState();
+  clearFireworksCanvas();
+  if (fireworksCanvas) fireworksCanvas.hidden = true;
+  document.body.classList.remove('is-celebrating');
+}
+
+function launchFirework() {
+  if (!fireworks.active || !fireworksCanvas) return;
+  const width = fireworksCanvas.width / canvasScale();
+  const height = fireworksCanvas.height / canvasScale();
+  const startX = width * (0.18 + Math.random() * 0.64);
+  const startY = height + 12;
+  const targetX = width * (0.16 + Math.random() * 0.68);
+  const targetY = height * (0.14 + Math.random() * 0.34);
+  const duration = 620 + Math.random() * 260;
+
+  fireworks.rockets.push({
+    x: startX,
+    y: startY,
+    startX,
+    startY,
+    targetX,
+    targetY,
+    elapsed: 0,
+    duration,
+    color: randomFireworkColor(),
+    trail: []
+  });
+}
+
+function updateFireworks(now) {
+  if (!fireworks.active || !fireworksCtx || !fireworksCanvas) return;
+
+  const dt = Math.min(40, now - fireworks.lastFrame);
+  fireworks.lastFrame = now;
+  fireworksCtx.clearRect(0, 0, fireworksCanvas.width, fireworksCanvas.height);
+  updateRockets(dt);
+  updateParticles(dt);
+  drawRockets();
+  drawParticles();
+
+  if (fireworks.launching || fireworks.rockets.length || fireworks.particles.length) {
+    fireworks.rafId = requestAnimationFrame(updateFireworks);
+  } else {
+    stopFireworks();
+  }
+}
+
+function updateRockets(dt) {
+  for (let index = fireworks.rockets.length - 1; index >= 0; index -= 1) {
+    const rocket = fireworks.rockets[index];
+    rocket.elapsed += dt;
+    const progress = Math.min(1, rocket.elapsed / rocket.duration);
+    const eased = 1 - (1 - progress) ** 3;
+    const wobble = Math.sin(progress * Math.PI * 5) * 8 * (1 - progress);
+
+    rocket.x = rocket.startX + (rocket.targetX - rocket.startX) * eased + wobble;
+    rocket.y = rocket.startY + (rocket.targetY - rocket.startY) * eased;
+    rocket.trail.push({ x: rocket.x, y: rocket.y });
+    if (rocket.trail.length > 8) rocket.trail.shift();
+
+    if (progress >= 1) {
+      burstFirework(rocket);
+      fireworks.rockets.splice(index, 1);
+    }
+  }
+}
+
+function updateParticles(dt) {
+  for (let index = fireworks.particles.length - 1; index >= 0; index -= 1) {
+    const particle = fireworks.particles[index];
+    particle.elapsed += dt;
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.vy += 0.00022 * dt;
+    particle.vx *= 0.995;
+
+    if (particle.elapsed >= particle.life) {
+      fireworks.particles.splice(index, 1);
+    }
+  }
+}
+
+function burstFirework(rocket) {
+  const count = 44 + Math.floor(Math.random() * 18);
+  for (let index = 0; index < count; index += 1) {
+    const angle = (Math.PI * 2 * index) / count + Math.random() * 0.16;
+    const speed = 0.055 + Math.random() * 0.18;
+    fireworks.particles.push({
+      x: rocket.x,
+      y: rocket.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 1.4 + Math.random() * 1.7,
+      color: Math.random() < 0.75 ? rocket.color : randomFireworkColor(),
+      elapsed: 0,
+      life: 760 + Math.random() * 520
+    });
+  }
+}
+
+function drawRockets() {
+  for (const rocket of fireworks.rockets) {
+    fireworksCtx.save();
+    fireworksCtx.strokeStyle = rocket.color;
+    fireworksCtx.lineWidth = 2;
+    fireworksCtx.lineCap = 'round';
+    fireworksCtx.shadowBlur = 12;
+    fireworksCtx.shadowColor = rocket.color;
+    fireworksCtx.beginPath();
+    rocket.trail.forEach((point, index) => {
+      if (index === 0) fireworksCtx.moveTo(point.x, point.y);
+      else fireworksCtx.lineTo(point.x, point.y);
+    });
+    fireworksCtx.stroke();
+    fireworksCtx.restore();
+  }
+}
+
+function drawParticles() {
+  for (const particle of fireworks.particles) {
+    const remaining = 1 - particle.elapsed / particle.life;
+    fireworksCtx.save();
+    fireworksCtx.globalAlpha = Math.max(0, remaining);
+    fireworksCtx.fillStyle = particle.color;
+    fireworksCtx.shadowBlur = 14;
+    fireworksCtx.shadowColor = particle.color;
+    fireworksCtx.beginPath();
+    fireworksCtx.arc(particle.x, particle.y, particle.radius * remaining, 0, Math.PI * 2);
+    fireworksCtx.fill();
+    fireworksCtx.restore();
+  }
+}
+
+function resizeFireworksCanvas() {
+  if (!fireworksCanvas || !fireworksCtx) return;
+  const scale = canvasScale();
+  fireworksCanvas.width = Math.floor(window.innerWidth * scale);
+  fireworksCanvas.height = Math.floor(window.innerHeight * scale);
+  fireworksCtx.setTransform(scale, 0, 0, scale, 0, 0);
+}
+
+function clearFireworksCanvas() {
+  if (!fireworksCanvas || !fireworksCtx) return;
+  fireworksCtx.clearRect(0, 0, fireworksCanvas.width, fireworksCanvas.height);
+}
+
+function canvasScale() {
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
+
+function randomFireworkColor() {
+  return FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)];
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => (
     {
@@ -672,6 +883,10 @@ function escapeHtml(value) {
     }[char]
   ));
 }
+
+window.addEventListener('resize', () => {
+  if (fireworks.active) resizeFireworksCanvas();
+});
 
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
