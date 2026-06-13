@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#1f6f52">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Solitaire">
+    <title>Klondike Solitaire</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="game-shell">
+      <section class="top-panel" aria-label="Game controls">
+        <div class="title-block">
+          <h1>Klondike Solitaire</h1>
+          <div class="stats" aria-label="Game stats">
+            <span id="timer">00:00</span>
+            <span id="moves">0 moves</span>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="new-game" type="button">New Game</button>
+          <button id="restart-game" type="button">Restart Same Deal</button>
+          <button id="undo" type="button">Undo</button>
+          <button id="hint" type="button">Hint</button>
+          <fieldset class="draw-toggle" aria-label="Draw mode">
+            <legend>Draw</legend>
+            <button id="draw-one" type="button" aria-pressed="true">1</button>
+            <button id="draw-three" type="button" aria-pressed="false">3</button>
+          </fieldset>
+          <button id="auto-complete" type="button" disabled>Auto-complete</button>
+        </div>
+      </section>
+
+      <p id="status" class="status" aria-live="polite">Ready.</p>
+      <section id="board" class="board" aria-label="Klondike Solitaire board"></section>
+    </main>
+    <div id="drag-layer" class="drag-layer" aria-hidden="true"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

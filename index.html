@@ -4,43 +4,142 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#1f6f52">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Solitaire">
-    <title>Klondike Solitaire</title>
-    <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="./styles.css">
+    <title>Drew's Apps</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --felt: #1f6f52;
+        --felt-deep: #18523f;
+        --ink: #14241c;
+        --paper: #fffdf7;
+        --gold: #ffdf7a;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+          var(--felt);
+        background-size: 32px 32px;
+        color: white;
+      }
+
+      main {
+        width: min(920px, 100%);
+        margin: 0 auto;
+        padding: clamp(20px, 5vw, 48px);
+      }
+
+      header {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 24px;
+      }
+
+      h1,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(2rem, 8vw, 4.5rem);
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+
+      header p {
+        max-width: 38rem;
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 1rem;
+        font-weight: 650;
+      }
+
+      .apps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+        gap: 14px;
+      }
+
+      .app-card {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        gap: 14px;
+        align-items: center;
+        min-height: 112px;
+        padding: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 8px;
+        background: var(--paper);
+        color: var(--ink);
+        text-decoration: none;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+      }
+
+      .app-card:hover,
+      .app-card:focus-visible {
+        outline: 4px solid var(--gold);
+        outline-offset: 4px;
+      }
+
+      .app-card img {
+        width: 72px;
+        height: 72px;
+        border-radius: 8px;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.22);
+      }
+
+      .app-copy {
+        display: grid;
+        gap: 4px;
+      }
+
+      .app-title {
+        font-size: 1.18rem;
+        font-weight: 900;
+      }
+
+      .app-meta {
+        color: rgba(20, 36, 28, 0.68);
+        font-size: 0.9rem;
+        font-weight: 700;
+      }
+
+      @media (max-width: 460px) {
+        .app-card {
+          grid-template-columns: 58px 1fr;
+          padding: 13px;
+        }
+
+        .app-card img {
+          width: 58px;
+          height: 58px;
+        }
+      }
+    </style>
   </head>
   <body>
-    <main class="game-shell">
-      <section class="top-panel" aria-label="Game controls">
-        <div class="title-block">
-          <h1>Klondike Solitaire</h1>
-          <div class="stats" aria-label="Game stats">
-            <span id="timer">00:00</span>
-            <span id="moves">0 moves</span>
-          </div>
-        </div>
+    <main>
+      <header>
+        <h1>Drew's Apps</h1>
+        <p>Small useful things, built for home screens and quiet daily use.</p>
+      </header>
 
-        <div class="controls">
-          <button id="new-game" type="button">New Game</button>
-          <button id="restart-game" type="button">Restart Same Deal</button>
-          <button id="undo" type="button">Undo</button>
-          <button id="hint" type="button">Hint</button>
-          <fieldset class="draw-toggle" aria-label="Draw mode">
-            <legend>Draw</legend>
-            <button id="draw-one" type="button" aria-pressed="true">1</button>
-            <button id="draw-three" type="button" aria-pressed="false">3</button>
-          </fieldset>
-          <button id="auto-complete" type="button" disabled>Auto-complete</button>
-        </div>
+      <section class="apps" aria-label="Apps">
+        <a class="app-card" href="./solitaire/">
+          <img src="./solitaire/icons/icon-192.png" alt="" width="72" height="72">
+          <span class="app-copy">
+            <span class="app-title">Klondike Solitaire</span>
+            <span class="app-meta">Installable card game</span>
+          </span>
+        </a>
       </section>
-
-      <p id="status" class="status" aria-live="polite">Ready.</p>
-      <section id="board" class="board" aria-label="Klondike Solitaire board"></section>
     </main>
-    <div id="drag-layer" class="drag-layer" aria-hidden="true"></div>
-    <script type="module" src="./src/app.js"></script>
   </body>
 </html>
