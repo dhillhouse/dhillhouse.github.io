@@ -1,9 +1,9 @@
-const CACHE_NAME = 'klondike-solitaire-v1';
+const CACHE_NAME = 'klondike-solitaire-v2';
 const ASSETS = [
   './',
   './index.html',
-  './styles.css',
-  './src/app.js',
+  './styles.css?v=2',
+  './src/app.js?v=2',
   './src/game.js',
   './manifest.webmanifest',
   './icons/apple-touch-icon.png',
