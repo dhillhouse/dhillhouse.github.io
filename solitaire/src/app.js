@@ -1,6 +1,5 @@
 import {
   SUITS,
-  autoComplete,
   cardAriaLabel,
   cardColor,
   cardName,
@@ -10,7 +9,7 @@ import {
   getAutoCompletePlan,
   getBestMoveForSource,
   getElapsedMs,
-  getHint,
+  getHints,
   getMovableCards,
   loadDrawModePreference,
   loadState,
@@ -21,7 +20,7 @@ import {
   setDrawMode,
   suitInfo,
   undo
-} from './game.js';
+} from './game.js?v=5';
 
 const board = document.querySelector('#board');
 const dragLayer = document.querySelector('#drag-layer');
@@ -39,6 +38,8 @@ const drawThreeBtn = document.querySelector('#draw-three');
 const autoBtn = document.querySelector('#auto-complete');
 const MIN_DROP_SLOP = 32;
 const MAX_DROP_SLOP = 72;
+const AUTO_COMPLETE_CARD_MS = 160;
+const AUTO_COMPLETE_CARD_GAP_MS = 35;
 const FIREWORK_COLORS = ['#ffdf7a', '#ff6f91', '#67e8f9', '#a7f3d0', '#f9a8d4', '#ffffff'];
 
 let state = loadState(localStorage) || createNewGame({ drawMode: loadDrawModePreference(localStorage) });
@@ -48,6 +49,8 @@ let drag = null;
 let lastTap = { key: '', at: 0 };
 let statusTone = '';
 let hintTarget = null;
+let hintCycle = { key: '', index: -1 };
+let isAutoCompleting = false;
 let lastKnownWon = Boolean(state.won);
 let fireworks = createFireworksState();
 
@@ -58,18 +61,23 @@ setInterval(updateTimer, 1000);
 registerServiceWorker();
 
 newGameBtn.addEventListener('click', () => {
+  if (isAutoCompleting) return;
   state = createNewGame({ drawMode: state.drawMode });
   selection = null;
+  resetHintCycle();
   saveAndRender('New deal started.');
 });
 
 restartBtn.addEventListener('click', () => {
+  if (isAutoCompleting) return;
   state = restartSameDeal(state);
   selection = null;
+  resetHintCycle();
   saveAndRender('Restarted the same deal.');
 });
 
 undoBtn.addEventListener('click', () => {
+  if (isAutoCompleting) return;
   const result = undo(state);
   if (!result.ok) {
     setStatus(result.reason, 'error');
@@ -77,18 +85,25 @@ undoBtn.addEventListener('click', () => {
   }
   state = result.state;
   selection = null;
+  resetHintCycle();
   saveAndRender('Undid the last action.');
 });
 
 hintBtn.addEventListener('click', () => {
-  const hint = getHint(state);
-  if (!hint.available) {
+  if (isAutoCompleting) return;
+  const hints = getHints(state);
+  if (!hints.available) {
     selection = null;
     hintTarget = null;
     render();
-    setStatus(hint.message, 'error');
+    setStatus(hints.message, 'error');
     return;
   }
+
+  const hintKey = hints.moves.map((hint) => hint.key).join('|');
+  const index = hintCycle.key === hintKey ? (hintCycle.index + 1) % hints.moves.length : 0;
+  hintCycle = { key: hintKey, index };
+  const hint = hints.moves[index];
 
   if (hint.source) {
     const cards = getMovableCards(state, hint.source);
@@ -99,21 +114,14 @@ hintBtn.addEventListener('click', () => {
 
   hintTarget = hint.target;
   render();
-  setStatus(hint.message);
+  setStatus(`Hint ${index + 1} of ${hints.moves.length}: ${hint.message}`);
 });
 
 drawOneBtn.addEventListener('click', () => updateDrawMode(1));
 drawThreeBtn.addEventListener('click', () => updateDrawMode(3));
 
 autoBtn.addEventListener('click', () => {
-  const result = autoComplete(state);
-  if (!result.ok) {
-    setStatus(result.reason, 'error');
-    return;
-  }
-  state = result.state;
-  selection = null;
-  saveAndRender(`Auto-completed ${result.movedCards} cards.`, state.won ? 'win' : '');
+  runAutoCompleteAnimation();
 });
 
 board.addEventListener('pointerdown', handlePointerDown);
@@ -124,11 +132,13 @@ document.addEventListener('keydown', handleKeyDown);
 window.addEventListener('beforeunload', () => saveState(localStorage, state));
 
 function updateDrawMode(mode) {
+  if (isAutoCompleting) return;
   state = setDrawMode(state, mode);
   saveAndRender(`Draw ${mode} mode selected.`);
 }
 
 function handlePointerDown(event) {
+  if (isAutoCompleting) return;
   if (!event.isPrimary || event.button > 0) return;
   const stock = event.target.closest('[data-pile="stock"]');
   const source = sourceFromElement(event.target);
@@ -217,9 +227,11 @@ function handleTap(event) {
 }
 
 function handleKeyDown(event) {
+  if (isAutoCompleting) return;
   if (event.key === 'Escape') {
     selection = null;
     hintTarget = null;
+    resetHintCycle();
     clearDrag();
     render();
     setStatus('Selection cleared.');
@@ -322,6 +334,120 @@ function attemptAutoMove(source) {
   saveAndRender(state.won ? 'You won. Nicely played.' : `Moved ${cardText} to ${destination}.`, state.won ? 'win' : '');
 }
 
+async function runAutoCompleteAnimation() {
+  if (isAutoCompleting) return;
+  const plan = getAutoCompletePlan(state);
+  if (!plan.canComplete) {
+    setStatus('Auto-complete is not safe yet.', 'error');
+    return;
+  }
+
+  isAutoCompleting = true;
+  selection = null;
+  hintTarget = null;
+  resetHintCycle();
+  render();
+  setStatus(`Auto-completing 0 of ${plan.moves.length}.`);
+
+  let movedCards = 0;
+  try {
+    for (const move of plan.moves) {
+      await animateAutoCompleteMove(move);
+      const result = moveCards(state, move.source, move.target, {
+        recordUndo: movedCards === 0,
+        countMove: true
+      });
+
+      if (!result.ok) {
+        setStatus(result.reason, 'error');
+        break;
+      }
+
+      state = result.state;
+      movedCards += 1;
+      saveState(localStorage, state);
+      render();
+      setStatus(`Auto-completing ${movedCards} of ${plan.moves.length}.`, state.won ? 'win' : '');
+      if (movedCards < plan.moves.length) await wait(AUTO_COMPLETE_CARD_GAP_MS);
+    }
+  } finally {
+    clearAutoCompleteFlyers();
+    isAutoCompleting = false;
+  }
+
+  saveAndRender(
+    state.won ? `Auto-completed ${movedCards} cards. You won.` : `Auto-completed ${movedCards} cards.`,
+    state.won ? 'win' : ''
+  );
+}
+
+async function animateAutoCompleteMove(move) {
+  if (prefersReducedMotion()) return;
+  const cards = getMovableCards(state, move.source);
+  const card = cards[0];
+  if (!card) return;
+
+  const sourceEl = board.querySelector(`[data-card-id="${card.id}"]`);
+  const targetEl = targetElementForMove(move.target);
+  if (!sourceEl || !targetEl) return;
+
+  const sourceRect = sourceEl.getBoundingClientRect();
+  const targetRect = targetEl.getBoundingClientRect();
+  const flyer = createAutoCompleteFlyer(card, sourceRect);
+  const dx = targetRect.left - sourceRect.left;
+  const dy = targetRect.top - sourceRect.top;
+
+  sourceEl.classList.add('is-auto-moving-source');
+  try {
+    const animation = flyer.animate(
+      [
+        { transform: 'translate3d(0, 0, 0) scale(1)' },
+        { transform: `translate3d(${dx}px, ${dy}px, 0) scale(0.96)` }
+      ],
+      {
+        duration: AUTO_COMPLETE_CARD_MS,
+        easing: 'cubic-bezier(0.2, 0.8, 0.25, 1)',
+        fill: 'forwards'
+      }
+    );
+    await animation.finished.catch(() => {});
+  } finally {
+    sourceEl.classList.remove('is-auto-moving-source');
+    flyer.remove();
+  }
+}
+
+function createAutoCompleteFlyer(card, rect) {
+  const flyer = document.createElement('div');
+  flyer.className = 'auto-complete-flyer';
+  flyer.style.left = `${rect.left}px`;
+  flyer.style.top = `${rect.top}px`;
+  flyer.style.width = `${rect.width}px`;
+  flyer.style.height = `${rect.height}px`;
+  flyer.innerHTML = cardMarkup(card, { z: 1 });
+  dragLayer.append(flyer);
+  return flyer;
+}
+
+function targetElementForMove(target) {
+  if (target.type === 'foundation') {
+    return board.querySelector(`[data-target-type="foundation"][data-suit="${target.suit}"]`);
+  }
+  if (target.type === 'tableau') {
+    return board.querySelector(`[data-target-type="tableau"][data-column="${target.column}"]`);
+  }
+  return null;
+}
+
+function clearAutoCompleteFlyers() {
+  dragLayer.querySelectorAll('.auto-complete-flyer').forEach((element) => element.remove());
+  board.querySelectorAll('.is-auto-moving-source').forEach((element) => element.classList.remove('is-auto-moving-source'));
+}
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function startDrag(event) {
   const cards = getMovableCards(state, pendingPointer.source);
   if (!cards.length) {
@@ -378,6 +504,7 @@ function releasePointer(pointerId) {
 
 function saveAndRender(message, tone = '') {
   hintTarget = null;
+  resetHintCycle();
   saveState(localStorage, state);
   render();
   const autoReady = getAutoCompletePlan(state).canComplete;
@@ -392,13 +519,17 @@ function saveAndRender(message, tone = '') {
 
 function render() {
   movesEl.textContent = `${state.moves} ${state.moves === 1 ? 'move' : 'moves'}`;
-  undoBtn.disabled = state.undoStack.length === 0;
-  hintBtn.disabled = state.won;
+  newGameBtn.disabled = isAutoCompleting;
+  restartBtn.disabled = isAutoCompleting;
+  undoBtn.disabled = isAutoCompleting || state.undoStack.length === 0;
+  hintBtn.disabled = isAutoCompleting || state.won;
+  drawOneBtn.disabled = isAutoCompleting;
+  drawThreeBtn.disabled = isAutoCompleting;
   drawOneBtn.setAttribute('aria-pressed', String(state.drawMode === 1));
   drawThreeBtn.setAttribute('aria-pressed', String(state.drawMode === 3));
 
   const autoPlan = getAutoCompletePlan(state);
-  autoBtn.disabled = !autoPlan.canComplete;
+  autoBtn.disabled = isAutoCompleting || !autoPlan.canComplete;
   autoBtn.title = autoPlan.canComplete ? 'Finish the safe foundation moves' : 'Available when no guessing remains';
 
   board.innerHTML = `
@@ -470,7 +601,7 @@ function emptyFoundationMarkup(suit) {
   return `
     <div class="empty-pile">
       <span class="foundation-mark">${suit.symbol}</span>
-      <span>${suit.label}</span>
+      <span class="foundation-label">${suit.label}</span>
     </div>
   `;
 }
@@ -650,6 +781,10 @@ function sourceKey(source) {
   return source.type;
 }
 
+function resetHintCycle() {
+  hintCycle = { key: '', index: -1 };
+}
+
 function updateTimer() {
   timerEl.textContent = formatTime(getElapsedMs(state));
 }
@@ -679,11 +814,10 @@ function syncWinCelebration() {
 function createFireworksState() {
   return {
     active: false,
-    launching: false,
     rockets: [],
     particles: [],
     rafId: 0,
-    timers: [],
+    launchInterval: 0,
     lastFrame: 0
   };
 }
@@ -694,29 +828,40 @@ function startFireworks() {
 
   fireworks = createFireworksState();
   fireworks.active = true;
-  fireworks.launching = true;
   fireworks.lastFrame = performance.now();
   fireworksCanvas.hidden = false;
   document.body.classList.add('is-celebrating');
   resizeFireworksCanvas();
 
-  const launchTimes = [0, 260, 520, 820, 1160, 1500, 1900, 2350, 2850];
-  fireworks.timers = launchTimes.map((delay) => window.setTimeout(launchFirework, delay));
-  fireworks.timers.push(window.setTimeout(() => {
-    fireworks.launching = false;
-  }, launchTimes[launchTimes.length - 1] + 120));
-
+  launchFirework();
+  fireworks.launchInterval = window.setInterval(launchFirework, 320);
+  armFireworksDismissal();
   fireworks.rafId = requestAnimationFrame(updateFireworks);
 }
 
 function stopFireworks() {
-  if (!fireworks.active && !fireworks.launching) return;
-  fireworks.timers.forEach((timerId) => clearTimeout(timerId));
+  if (!fireworks.active) return;
+  if (fireworks.launchInterval) clearInterval(fireworks.launchInterval);
   if (fireworks.rafId) cancelAnimationFrame(fireworks.rafId);
+  disarmFireworksDismissal();
   fireworks = createFireworksState();
   clearFireworksCanvas();
   if (fireworksCanvas) fireworksCanvas.hidden = true;
   document.body.classList.remove('is-celebrating');
+}
+
+function armFireworksDismissal() {
+  window.addEventListener('pointerdown', dismissFireworksFromUser, true);
+  window.addEventListener('mousemove', dismissFireworksFromUser, true);
+}
+
+function disarmFireworksDismissal() {
+  window.removeEventListener('pointerdown', dismissFireworksFromUser, true);
+  window.removeEventListener('mousemove', dismissFireworksFromUser, true);
+}
+
+function dismissFireworksFromUser() {
+  stopFireworks();
 }
 
 function launchFirework() {
@@ -754,10 +899,8 @@ function updateFireworks(now) {
   drawRockets();
   drawParticles();
 
-  if (fireworks.launching || fireworks.rockets.length || fireworks.particles.length) {
+  if (fireworks.active) {
     fireworks.rafId = requestAnimationFrame(updateFireworks);
-  } else {
-    stopFireworks();
   }
 }
 
