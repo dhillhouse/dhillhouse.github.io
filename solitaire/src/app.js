@@ -20,7 +20,7 @@ import {
   setDrawMode,
   suitInfo,
   undo
-} from './game.js?v=5';
+} from './game.js?v=6';
 
 const board = document.querySelector('#board');
 const dragLayer = document.querySelector('#drag-layer');

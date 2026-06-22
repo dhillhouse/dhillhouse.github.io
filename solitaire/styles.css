@@ -262,8 +262,9 @@ h1 {
 }
 
 .foundation-label {
+  display: block;
   max-width: 100%;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
   font-size: 0.68rem;
   line-height: 1;
 }
@@ -465,6 +466,6 @@ body.is-dragging {
   }
 
   .foundation-label {
-    font-size: 0.5rem;
+    font-size: clamp(0.34rem, 1.6vw, 0.5rem);
   }
 }
