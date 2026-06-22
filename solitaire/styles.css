@@ -7,6 +7,10 @@
   --card-h: calc(var(--card-w) * 1.42);
   --stack-gap: clamp(17px, 4.1vw, 31px);
   --waste-gap: clamp(12px, 3vw, 21px);
+  --board-pad: 16px;
+  --board-gap: 17px;
+  --row-gap: clamp(8px, 1.8vw, 15px);
+  --pile-gap: clamp(4px, 1.2vw, 13px);
   --radius: 8px;
   --red: #b42035;
   --black: #17212b;
@@ -189,8 +193,8 @@ h1 {
 
 .board {
   display: grid;
-  gap: 17px;
-  padding: 16px;
+  gap: var(--board-gap);
+  padding: var(--board-pad);
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
   background:
@@ -205,7 +209,7 @@ h1 {
 .top-row {
   display: grid;
   grid-template-columns: var(--card-w) calc(var(--card-w) + var(--waste-gap) + var(--waste-gap)) max-content;
-  gap: clamp(8px, 1.8vw, 15px);
+  gap: var(--row-gap);
   align-items: start;
   width: max-content;
 }
@@ -213,14 +217,14 @@ h1 {
 .foundations {
   display: grid;
   grid-template-columns: repeat(4, var(--card-w));
-  gap: clamp(8px, 1.8vw, 15px);
+  gap: var(--row-gap);
   justify-content: end;
 }
 
 .tableau {
   display: grid;
   grid-template-columns: repeat(7, var(--card-w));
-  gap: clamp(4px, 1.2vw, 13px);
+  gap: var(--pile-gap);
   align-items: start;
   width: max-content;
 }
@@ -391,13 +395,22 @@ body.is-dragging {
 }
 
 @media (max-width: 620px) {
+  :root {
+    --card-w: min(54px, calc((100vw - 48px) / 7));
+    --stack-gap: clamp(19px, 5.4vw, 28px);
+    --waste-gap: clamp(7px, 2.1vw, 10px);
+    --board-pad: 6px;
+    --board-gap: 10px;
+    --row-gap: 5px;
+    --pile-gap: 3px;
+  }
+
   .game-shell {
-    padding: 10px;
+    padding: 8px;
   }
 
   .board {
-    padding: 10px;
-    gap: 12px;
+    overflow-x: hidden;
   }
 
   h1 {
