@@ -9,7 +9,7 @@ import {
   getAutoCompletePlan,
   getBestMoveForSource,
   getElapsedMs,
-  getHints,
+  getHint,
   getMovableCards,
   loadDrawModePreference,
   loadState,
@@ -20,7 +20,7 @@ import {
   setDrawMode,
   suitInfo,
   undo
-} from './game.js?v=6';
+} from './game.js?v=7';
 
 const board = document.querySelector('#board');
 const dragLayer = document.querySelector('#drag-layer');
@@ -49,7 +49,6 @@ let drag = null;
 let lastTap = { key: '', at: 0 };
 let statusTone = '';
 let hintTarget = null;
-let hintCycle = { key: '', index: -1 };
 let isAutoCompleting = false;
 let lastKnownWon = Boolean(state.won);
 let fireworks = createFireworksState();
@@ -64,7 +63,6 @@ newGameBtn.addEventListener('click', () => {
   if (isAutoCompleting) return;
   state = createNewGame({ drawMode: state.drawMode });
   selection = null;
-  resetHintCycle();
   saveAndRender('New deal started.');
 });
 
@@ -72,7 +70,6 @@ restartBtn.addEventListener('click', () => {
   if (isAutoCompleting) return;
   state = restartSameDeal(state);
   selection = null;
-  resetHintCycle();
   saveAndRender('Restarted the same deal.');
 });
 
@@ -85,25 +82,19 @@ undoBtn.addEventListener('click', () => {
   }
   state = result.state;
   selection = null;
-  resetHintCycle();
   saveAndRender('Undid the last action.');
 });
 
 hintBtn.addEventListener('click', () => {
   if (isAutoCompleting) return;
-  const hints = getHints(state);
-  if (!hints.available) {
+  const hint = getHint(state);
+  if (!hint.available) {
     selection = null;
     hintTarget = null;
     render();
-    setStatus(hints.message, 'error');
+    setStatus(hint.message, 'error');
     return;
   }
-
-  const hintKey = hints.moves.map((hint) => hint.key).join('|');
-  const index = hintCycle.key === hintKey ? (hintCycle.index + 1) % hints.moves.length : 0;
-  hintCycle = { key: hintKey, index };
-  const hint = hints.moves[index];
 
   if (hint.source) {
     const cards = getMovableCards(state, hint.source);
@@ -114,7 +105,7 @@ hintBtn.addEventListener('click', () => {
 
   hintTarget = hint.target;
   render();
-  setStatus(`Hint ${index + 1} of ${hints.moves.length}: ${hint.message}`);
+  setStatus(hint.message);
 });
 
 drawOneBtn.addEventListener('click', () => updateDrawMode(1));
@@ -231,7 +222,6 @@ function handleKeyDown(event) {
   if (event.key === 'Escape') {
     selection = null;
     hintTarget = null;
-    resetHintCycle();
     clearDrag();
     render();
     setStatus('Selection cleared.');
@@ -345,7 +335,6 @@ async function runAutoCompleteAnimation() {
   isAutoCompleting = true;
   selection = null;
   hintTarget = null;
-  resetHintCycle();
   render();
   setStatus(`Auto-completing 0 of ${plan.moves.length}.`);
 
@@ -504,7 +493,6 @@ function releasePointer(pointerId) {
 
 function saveAndRender(message, tone = '') {
   hintTarget = null;
-  resetHintCycle();
   saveState(localStorage, state);
   render();
   const autoReady = getAutoCompletePlan(state).canComplete;
@@ -779,10 +767,6 @@ function sourceKey(source) {
   if (source.type === 'tableau') return `tableau:${source.column}:${source.index}`;
   if (source.type === 'foundation') return `foundation:${source.suit}`;
   return source.type;
-}
-
-function resetHintCycle() {
-  hintCycle = { key: '', index: -1 };
 }
 
 function updateTimer() {

@@ -325,28 +325,15 @@ export function getAutoCompletePlan(state) {
 }
 
 export function getHint(state) {
-  const hints = getHints(state);
-  if (!hints.available) return hints;
-  return hints.moves[0];
-}
+  if (state.won) return { available: false, message: 'This deal is already won.' };
+  const move = hintMoves(state)[0];
+  if (!move) return { available: false, message: 'No legal moves are available.' };
 
-export function getHints(state) {
-  if (state.won) return { available: false, message: 'This deal is already won.', moves: [] };
-  const moves = hintMoves(state).map((move) => {
-    const target = move.kind === 'stock' ? { type: 'stock' } : move.target;
-    return {
-      available: true,
-      source: move.source || null,
-      target,
-      message: describeHint(state, move),
-      key: hintMoveKey(move)
-    };
-  });
-  if (!moves.length) return { available: false, message: 'No legal moves are available.', moves: [] };
   return {
     available: true,
-    message: moves[0].message,
-    moves
+    source: move.source || null,
+    target: move.kind === 'stock' ? { type: 'stock' } : move.target,
+    message: describeHint(state, move)
   };
 }
 
@@ -691,8 +678,6 @@ function hintMoves(state) {
   const revealingTableauMoves = [];
   const freeingFoundationMoves = [];
   const wasteTableauMoves = [];
-  const tableauMoves = [];
-  const foundationTableauMoves = [];
 
   const wasteCard = topCard(state.waste);
   if (wasteCard) {
@@ -739,19 +724,7 @@ function hintMoves(state) {
           revealingTableauMoves.push(move);
         } else if (exposed && canPlaceOnFoundation(exposed, state.foundations[exposed.suit], exposed.suit)) {
           freeingFoundationMoves.push(move);
-        } else {
-          tableauMoves.push(move);
         }
-      }
-    }
-  }
-
-  for (const suit of SUITS) {
-    const card = topCard(state.foundations[suit.id]);
-    if (!card) continue;
-    for (let column = 0; column < 7; column += 1) {
-      if (canPlaceOnTableau([card], state.tableau[column])) {
-        foundationTableauMoves.push({ kind: 'move', source: { type: 'foundation', suit: suit.id }, target: { type: 'tableau', column } });
       }
     }
   }
@@ -762,8 +735,6 @@ function hintMoves(state) {
     ...revealingTableauMoves,
     ...freeingFoundationMoves,
     ...wasteTableauMoves,
-    ...tableauMoves,
-    ...foundationTableauMoves,
     ...stockMove
   ];
 }
@@ -793,25 +764,6 @@ function describeHint(state, move) {
 
   const cardText = cards.length === 1 ? cardName(lead) : `${cardName(lead)} and ${cards.length - 1} more cards`;
   return `Move ${cardText} to tableau column ${move.target.column + 1}.`;
-}
-
-function hintMoveKey(move) {
-  if (move.kind === 'stock') return 'stock';
-  return `${sourceMoveKey(move.source)}>${targetMoveKey(move.target)}`;
-}
-
-function sourceMoveKey(source) {
-  if (!source) return '';
-  if (source.type === 'tableau') return `tableau:${source.column}:${source.index}`;
-  if (source.type === 'foundation') return `foundation:${source.suit}`;
-  return source.type;
-}
-
-function targetMoveKey(target) {
-  if (!target) return '';
-  if (target.type === 'tableau') return `tableau:${target.column}`;
-  if (target.type === 'foundation') return `foundation:${target.suit}`;
-  return target.type;
 }
 
 function stateFromDeal(dealt, drawMode) {
